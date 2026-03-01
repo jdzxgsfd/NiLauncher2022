@@ -1,6 +1,6 @@
-https://download.ni.com/support/nipkg/products/ni-s/ni-software-platform-bundle-x86-fr/22.5/offline/ni-software-platform-bundle-x86-fr_22.5.0.49199-0+f47_offline.iso 
-ni-software-platform-bundle-x86-fr_22.5.0.49199-0+f47_offline.iso
-17638873cf815b9bcc95e3a8d35cb441
-22.5.0.49199.x32.fr-FR
-Software Platform Bundle 2022 Q3 32bit French
+https://download.ni.com/support/nipkg/products/ni-s/ni-software-platform-bundle-x86-ja/21.5/offline/ni-software-platform-bundle-x86-ja_21.5.0.49279-0+f127_offline.iso 
+ni-software-platform-bundle-x86-ja_21.5.0.49279-0+f127_offline.iso
+fabba08b2995b1a87da2cd7c33bf9d15
+21.5.0.49279.x32.ja-JP
+Software Platform Bundle 2022 Q1 (Fall 2021) 32bit Japanese
 NI.SPB

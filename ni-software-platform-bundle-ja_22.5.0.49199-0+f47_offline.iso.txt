@@ -1,6 +1,0 @@
-https://download.ni.com/support/nipkg/products/ni-s/ni-software-platform-bundle-ja/22.5/offline/ni-software-platform-bundle-ja_22.5.0.49199-0+f47_offline.iso 
-ni-software-platform-bundle-ja_22.5.0.49199-0+f47_offline.iso
-e2b206f834a9d0680a7efa5853ca0d6d
-22.5.0.49199.x64.ja-JP
-Software Platform Bundle 2022 Q3 64bit Japanese
-NI.SPB

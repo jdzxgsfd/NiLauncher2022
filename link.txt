@@ -1,6 +1,6 @@
-https://download.ni.com/support/nipkg/products/ni-s/ni-software-platform-bundle/21.5/offline/ni-software-platform-bundle_21.5.0.49279-0+f127_offline.iso 
-ni-software-platform-bundle_21.5.0.49279-0+f127_offline.iso
-7c7a61f00e68436a7617913077f3dea6
-21.5.0.49279.x64.en-US
-Software Platform Bundle 2022 Q1 (Fall 2021) 64bit English
+https://download.ni.com/support/nipkg/products/ni-s/ni-software-platform-bundle/22.5/offline/ni-software-platform-bundle_22.5.0.49199-0+f47_offline.iso 
+ni-software-platform-bundle_22.5.0.49199-0+f47_offline.iso
+ce06c4ca6d95ff99a334d0ba6aa2927d
+22.5.0.49199.x64.en-US
+Software Platform Bundle 2022 Q3 64bit English
 NI.SPB

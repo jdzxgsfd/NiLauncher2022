@@ -1,0 +1,281 @@
+name: AutomationWorkflow
+on:
+  push:
+  # 2. 允许通过 API 触发（核心：用于自身重触发）
+  workflow_dispatch:
+    inputs:
+      run_count:
+        description: '当前执行次数'
+        required: true
+        default: '1'
+
+# 关键：固定并发组名为仓库标识，确保所有实例同属一组
+concurrency:
+  group: "21.5.0.49279.x64.en-US"  # 用仓库名作为全局唯一并发组（如 "owner/repo"）
+  cancel-in-progress: false  # 新实例等待旧实例完成，不取消正在运行的
+
+jobs:
+  sync-and-release:
+    runs-on: windows-latest  # 必须使用 Windows 环境运行 .NET Framework 程序
+    env:
+      # 定义最大执行次数（避免无限循环）
+      MAX_RUNS: 1
+      # 手动指定实际的 Workflow 文件名（关键修复！）
+      WORKFLOW_FILE_NAME: "main.yml"
+    permissions:
+        contents: write  # 显式声明权限（增强兼容性）
+        packages: write
+    steps:
+      # 步骤：拉取仓库代码
+      - name: 检出代码
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # 拉取所有历史以获取完整tag列表
+
+      - name: 步骤4-运行 .NET Framework 4.7.2 程序
+        shell: pwsh
+        env:
+          # 从GitHub上下文获取仓库所属用户名
+          REPO_OWNER: ${{ github.repository_owner }}
+          # 从GitHub Secrets获取令牌（需提前在仓库设置中配置）
+          API_TOKEN: ${{ secrets.PAT_TOKEN }}
+        run: |
+          # 验证程序是否存在
+          if (-not (Test-Path -Path "./NiDownloader.exe")) {
+            Write-Error "未找到 NiDownloader.exe，请确保程序在仓库根目录"
+            exit 1
+          }
+          
+          # 构建命令行参数
+          # 参数1：仓库所有者名称，参数2：令牌值
+          # 带引号防止名称含空格
+          $arguments = @(
+            "`"$env:REPO_OWNER`"",  
+            "`"$env:API_TOKEN`""
+            "`"notInit`""
+          )          
+          
+          # 运行程序（等待其自行退出）
+          Write-Host "正在运行 NiDownloader.exe..."
+          & ./NiDownloader.exe $arguments
+          
+          # 检查程序退出码（0 为正常退出）
+          if ($LASTEXITCODE -ne 0) {
+            Write-Error "NiDownloader.exe 运行失败，退出码: $LASTEXITCODE"
+            exit 1
+          }
+          Write-Host "NiDownloader.exe 正常退出"
+
+      - name: 步骤5-发布资产到对应仓库
+        shell: pwsh
+        env:
+          PAT_TOKEN: ${{ secrets.PAT_TOKEN }}
+          CURRENT_REPO_FULL_NAME: ${{ github.repository }}
+        run: |
+          # 从环境变量读取目录列表（替代硬编码）
+          $currentRepoFullName = $env:CURRENT_REPO_FULL_NAME
+          $githubUsername = $currentRepoFullName -split '/' | Select-Object -First 1
+          Write-Host "当前 workflow 所属账号: $githubUsername"
+          
+          $token = $env:PAT_TOKEN
+          if ([string]::IsNullOrWhiteSpace($token)) {
+            Write-Error "PAT_TOKEN 未配置，请检查仓库 Secrets"
+            exit 1
+          }
+          
+            $tagFile = "./tag.txt"
+            $titleFile = "./title.txt"
+            $repoFile = "./rep.txt"
+            $downloadingDir = "./downloading"
+            
+            Write-Host "`n读取标签和标题"
+            
+            # 读取标签和标题
+            $tag = (Get-Content -Path $tagFile -Raw).Trim()
+            $title = (Get-Content -Path $titleFile -Raw).Trim()
+            $repo = (Get-Content -Path $repoFile -Raw).Trim()
+
+            # 检查文件存在性
+            if (-not (Test-Path -Path $tagFile) -or -not (Test-Path -Path $titleFile)) {
+              Write-Warning "缺少 tag.txt 或 title.txt，跳过仓库 $githubUsername/$repo 的发布"
+              continue
+            }
+            
+            # 验证非空
+            if ([string]::IsNullOrWhiteSpace($tag) -or [string]::IsNullOrWhiteSpace($title)) {
+              Write-Warning "标签/标题为空，跳过仓库 $githubUsername/$repo 的发布"
+              continue
+            }
+            
+            # 检查下载目录
+            if (-not (Test-Path -Path $downloadingDir) -or (Get-ChildItem -Path $downloadingDir | Measure-Object).Count -eq 0) {
+              Write-Warning "下载目录为空，跳过仓库 $githubUsername/$repo 的发布"
+              continue
+            }
+            
+            # 校验非法字符
+            $invalidChars = @('<', '>', ':', '"', '\', '|', '?', '*', ' ')
+            $tagHasInvalid = $false
+            foreach ($char in $invalidChars) {
+              if ($tag.Contains($char)) {
+                Write-Warning "标签含非法字符 $char，跳过仓库 $githubUsername/$repo"
+                $tagHasInvalid = $true
+                break
+              }
+            }
+            if ($tagHasInvalid) {
+              continue
+            }
+
+            Write-Host "准备发布 - 仓库: $githubUsername/$repo, 标签: $tag, 标题: $title"
+
+            # 外层try（核心发布逻辑）
+            try {
+              $repoCheckUrl = "https://api.github.com/repos/$githubUsername/$repo"
+              $repoExists = $true
+              
+              # 内层try（检查仓库是否存在）
+              try {
+                Invoke-RestMethod -Uri $repoCheckUrl -Headers @{ "Authorization" = "token $token" } -Method Get | Out-Null
+              }
+              catch {
+                $statusCode = $_.Exception.Response.StatusCode.value__
+                if ($_.Exception.Response.StatusCode -eq 404) {
+                  $repoExists = $false
+                  Write-Warning "仓库不存在，跳过发布"
+                  continue
+                }
+                elseif ($statusCode -eq 403) {
+                  Write-Warning "权限不足，退出"
+                }
+                else {
+                  throw "检查仓库失败: $($_.Exception.Message)"
+                }
+              }
+
+              # 检查标签
+              $tagUrl = "https://api.github.com/repos/$githubUsername/$repo/git/refs/tags/$tag"
+              try {
+                Invoke-RestMethod -Uri $tagUrl -Headers @{ "Authorization" = "token $token" } -Method Get | Out-Null
+                Write-Host "标签 $tag 已存在"
+              }
+              catch {
+                if ($_.Exception.Response.StatusCode -eq 404) {
+                  Write-Host "创建标签 $tag..."
+                  # 获取默认分支
+                  $defaultBranch = $null
+                  try {
+                    $branchInfo = Invoke-RestMethod -Uri "https://api.github.com/repos/$githubUsername/$repo/branches/main" -Headers @{ "Authorization" = "token $token" }
+                    $defaultBranch = "main"
+                  }
+                  catch {
+                    if ($_.Exception.Response.StatusCode -eq 404) {
+                      $branchInfo = Invoke-RestMethod -Uri "https://api.github.com/repos/$githubUsername/$repo/branches/master" -Headers @{ "Authorization" = "token $token" }
+                      $defaultBranch = "master"
+                    }
+                    else {
+                      throw "获取分支失败: $($_.Exception.Message)"
+                    }
+                  }
+                  $commitSha = $branchInfo.commit.sha
+                  
+                  # 创建标签
+                  $createTagBody = @{ ref = "refs/tags/$tag"; sha = $commitSha } | ConvertTo-Json
+                  Invoke-RestMethod -Uri "https://api.github.com/repos/$githubUsername/$repo/git/refs" -Headers @{ "Authorization" = "token $token"; "Content-Type" = "application/json" } -Method Post -Body $createTagBody | Out-Null
+                  Write-Host "标签创建成功"
+                }
+                else {
+                  throw $_
+                }
+              } 
+
+              # 检查发布
+              $releasesUrl = "https://api.github.com/repos/$githubUsername/$repo/releases"
+              $releases = Invoke-RestMethod -Uri $releasesUrl -Headers @{ "Authorization" = "token $token" } -Method Get
+              $existingRelease = $releases | Where-Object { $_.tag_name -eq $tag }
+              if ($existingRelease) {
+                Write-Host "删除已有发布 $tag..."
+                Invoke-RestMethod -Uri $existingRelease.url -Headers @{ "Authorization" = "token $token" } -Method Delete | Out-Null
+                Write-Host "发布删除成功"
+              }
+
+              # 创建新发布
+              Write-Host "创建发布 $tag..."
+              $createReleaseBody = @{
+                tag_name = $tag
+                name = $title
+                body = "Auto publish assets"
+                draft = $false
+                prerelease = $false
+              } | ConvertTo-Json
+              $release = Invoke-RestMethod -Uri $releasesUrl -Headers @{ "Authorization" = "token $token"; "Content-Type" = "application/json" } -Method Post -Body $createReleaseBody
+
+              # 上传资产
+             #######################################
+             # 5. 上传 downloading 目录下的所有资产
+             #######################################
+             # ========== 新增：输出HEX格式，定位不可见字符 ==========
+             Write-Host "原始upload_url: $($release.upload_url)"
+             
+             # ========== 强化URL清理逻辑 ==========
+             # 1. 彻底清理所有非URL合法字符（仅保留字母、数字、:/.-?&=）
+             $cleanUploadUrl = $release.upload_url -replace '[^a-zA-Z0-9:/\.\-\?&=]', ''
+             Write-Host "清理所有非URL合法字符cleanUploadUrl: $cleanUploadUrl"                          
+             # 2. 截断{及之后的所有内容（包括隐藏字符）
+             # 安全截断{及之后内容（兼容无?的场景）
+             if ($cleanUploadUrl.Contains('{')) {
+                 $cleanUploadUrl = $cleanUploadUrl.Substring(0, $cleanUploadUrl.IndexOf('{'))
+             } elseif ($cleanUploadUrl.Contains('?')) {
+                 $cleanUploadUrl = $cleanUploadUrl.Substring(0, $cleanUploadUrl.IndexOf('?'))
+             }
+             Write-Host "截断问号及之后的所有内容cleanUploadUrl: $cleanUploadUrl" 
+             # 3. 移除首尾空白/不可见字符
+             $cleanUploadUrl = $cleanUploadUrl.Trim()
+             Write-Host "移除首尾空白不可见字符cleanUploadUrl: $cleanUploadUrl" 
+             # 4. 输出清理后的结果和HEX
+             Write-Host "清理后的upload_url: $cleanUploadUrl"
+             
+             # 5. 兜底拼接标准URL（最终保障）
+             if (-not [Uri]::IsWellFormedUriString($cleanUploadUrl, [UriKind]::Absolute)) {
+                 $cleanUploadUrl = "https://uploads.github.com/repos/$githubUsername/$repo/releases/$($release.id)/assets"
+                 Write-Host "URL验证失败，使用兜底地址: $cleanUploadUrl"
+             }
+             $uploadUrl = $cleanUploadUrl
+             # 强制保障URL非空
+             if ([string]::IsNullOrWhiteSpace($uploadUrl)) {
+                 $uploadUrl = "https://uploads.github.com/repos/$githubUsername/$repo/releases/$($release.id)/assets"
+                 Write-Host "uploadUrl为空，使用兜底地址: $uploadUrl"
+             }
+             Write-Host "上传之前的upload_url: $uploadUrl"
+             
+             # ========== 上传资产逻辑（原有不变） ==========
+             $assets = Get-ChildItem -Path $downloadingDir -File
+             foreach ($asset in $assets) {
+                 Write-Host "正在上传资产: $($asset.Name)"
+                 $assetPath = $asset.FullName
+                 $contentType = "application/octet-stream"
+                 
+                 # 最终拼接并验证URI
+                 Write-Host "最终拼接之前的upload_url: $uploadUrl"
+                 # 安全拼接：确保URL后无多余字符，再拼接参数
+                 $finalUploadUri = [System.Uri]::new($uploadUrl).AbsoluteUri + "?name=$([Uri]::EscapeDataString($asset.Name))"
+                 Write-Host "最终上传URI: $finalUploadUri"
+                 
+                 if (-not [Uri]::IsWellFormedUriString($finalUploadUri, [UriKind]::Absolute)) {
+                     throw "无效的上传URI: $finalUploadUri"
+                 }
+                 
+                 Invoke-RestMethod -Uri $finalUploadUri `
+                     -Headers @{
+                         "Authorization" = "token $token"
+                         "Content-Type" = $contentType
+                     } `
+                     -Method Post `
+                     -InFile $assetPath | Out-Null
+             }
+            }
+            catch {
+              Write-Warning "处理仓库 $githubUsername/$repo 失败: $($_.Exception.Message)"
+              continue
+            }
+            

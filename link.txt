@@ -1,6 +1,6 @@
-https://download.ni.com/support/nipkg/products/ni-s/ni-software-platform-bundle-x86-zh-cn/21.5/offline/ni-software-platform-bundle-x86-zh-cn_21.5.0.49279-0+f127_offline.iso 
-ni-software-platform-bundle-x86-zh-cn_21.5.0.49279-0+f127_offline.iso
-d52563b081ece419311ec56446cec29a
-21.5.0.49279.x32.zh-CN
-Software Platform Bundle 2022 Q1 (Fall 2021) 32bit Simplified Chinese
+https://download.ni.com/support/nipkg/products/ni-s/ni-software-platform-bundle-x86-zh-cn/22.5/offline/ni-software-platform-bundle-x86-zh-cn_22.5.0.49199-0+f47_offline.iso 
+ni-software-platform-bundle-x86-zh-cn_22.5.0.49199-0+f47_offline.iso
+0bd962fce7a18c0e71f347aa3c9ee1b7
+22.5.0.49199.x32.zh-CN
+Software Platform Bundle 2022 Q3 32bit Simplified Chinese
 NI.SPB
